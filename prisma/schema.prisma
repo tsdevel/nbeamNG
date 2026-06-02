@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────
+
+enum ProjectStatus {
+  active
+  under_review
+  completed
+  archived
+  purged_confidential
+  purged
+}
+
+enum ConfidentialityClass {
+  confidential
+  public
+  unknown
+}
+
+enum ArtifactType {
+  raw_upload
+  extracted_text
+  structured_data
+  research_summary
+  claim
+  evidence
+  data_need
+  review_comment
+  report
+}
+
+enum ArtifactStatus {
+  draft
+  verified
+  approved
+  superseded
+  deleted
+}
+
+// ─── Models ──────────────────────────────────────────────────────────
+
+model Project {
+  id                    String               @id @default(cuid())
+  customer_id           String
+  name                  String
+  target_company        String?
+  description           String?
+  confidentiality_class ConfidentialityClass   @default(unknown)
+  status                ProjectStatus        @default(active)
+  retention_policy      String? // Reserved; sophisticated config deferred to later slices
+  created_at            DateTime             @default(now())
+  updated_at            DateTime             @updatedAt
+
+  workspace_versions WorkspaceVersion[]
+  artifacts          Artifact[]
+  events             Event[]
+
+  @@index([customer_id])
+  @@index([status])
+  @@index([customer_id, status])
+}
+
+model WorkspaceVersion {
+  id                String   @id @default(cuid())
+  project_id        String
+  project           Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  customer_id       String
+  version_number    Int
+  parent_version_id String?
+  created_at        DateTime @default(now())
+
+  artifacts Artifact[]
+
+  @@unique([project_id, version_number])
+  @@index([project_id])
+  @@index([customer_id])
+}
+
+model Artifact {
+  id                   String         @id // Deterministic: generated in service layer for idempotency
+  project_id           String
+  project              Project        @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  workspace_version_id String
+  workspace_version    WorkspaceVersion @relation(fields: [workspace_version_id], references: [id], onDelete: Cascade)
+  customer_id          String
+  type                 ArtifactType
+  name                 String
+  mime_type            String?
+  storage_bucket       String?
+  storage_key          String?
+  file_hash            String? // SHA-256 for idempotency of raw uploads
+  extracted_text       String?  @db.Text
+  source_artifact_ids  String[] // Lightweight lineage for Slice 1; join tables in later slices
+  status               ArtifactStatus @default(draft)
+  metadata             Json? // Flexible schema per artifact type
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
+
+  @@index([project_id])
+  @@index([workspace_version_id])
+  @@index([customer_id])
+  @@index([type])
+  @@index([file_hash])
+  @@index([project_id, file_hash, type])
+  @@index([customer_id, type, status])
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  project_id  String?
+  project     Project? @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  customer_id String
+  tenant_id   String // Same as customer_id; explicit naming for audit clarity
+  event_type  String
+  payload     Json
+  occurred_at DateTime @default(now())
+
+  @@index([project_id])
+  @@index([customer_id])
+  @@index([tenant_id])
+  @@index([event_type])
+  @@index([occurred_at])
+  @@index([project_id, event_type, occurred_at])
+}
