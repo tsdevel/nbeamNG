@@ -7,6 +7,7 @@ import projectsRouter from './routes/projects';
 import artifactsRouter from './routes/artifacts';
 import tasksRouter from './routes/tasks';
 import dataneedsRouter from './routes/dataneeds';
+import claimsRouter from './routes/claims';
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use('/projects', projectsRouter);
 app.use(artifactsRouter);
 app.use(tasksRouter);
 app.use(dataneedsRouter);
+app.use(claimsRouter);
 
 // Error handler
 app.use(errorHandler);

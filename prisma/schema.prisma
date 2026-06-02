@@ -69,6 +69,33 @@ enum DataNeedStatus {
   needs_human_input
 }
 
+enum ClaimType {
+  financial_fact
+  operational_kpi
+  market_fact
+  valuation_input
+  management_assertion
+  calculated_metric
+  analyst_judgment
+  risk
+  hypothesis
+}
+
+enum ClaimStatus {
+  draft
+  supported
+  unsupported
+  needs_review
+}
+
+enum EvidenceReliability {
+  audited_filing
+  management_assertion
+  analyst_estimate
+  third_party_verified
+  unverified
+}
+
 // ─── Models ──────────────────────────────────────────────────────────
 
 model Project {
@@ -89,6 +116,8 @@ model Project {
   tasks              Task[]
   agent_runs         AgentRun[]
   data_needs         DataNeed[]
+  claims             Claim[]
+  evidence           Evidence[]
 
   @@index([customer_id])
   @@index([status])
@@ -105,6 +134,7 @@ model WorkspaceVersion {
   created_at        DateTime @default(now())
 
   artifacts Artifact[]
+  claims    Claim[]
 
   @@unique([project_id, version_number])
   @@index([project_id])
@@ -138,6 +168,9 @@ model Artifact {
   @@index([file_hash])
   @@index([project_id, file_hash, type])
   @@index([customer_id, type, status])
+
+  claims   Claim[]
+  evidence Evidence[]
 }
 
 model Event {
@@ -221,4 +254,49 @@ model DataNeed {
   @@index([project_id, status])
   @@index([customer_id, status])
   @@index([status])
+}
+
+model Claim {
+  id                   String            @id @default(cuid())
+  project_id           String
+  project              Project           @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  customer_id          String
+  workspace_version_id String
+  workspace_version    WorkspaceVersion  @relation(fields: [workspace_version_id], references: [id], onDelete: Cascade)
+  artifact_id          String
+  artifact             Artifact          @relation(fields: [artifact_id], references: [id], onDelete: Cascade)
+  type                 ClaimType
+  text                 String
+  status               ClaimStatus       @default(draft)
+  source_reliability   EvidenceReliability?
+  source_coordinates   Json?
+  metadata             Json?
+  created_at           DateTime          @default(now())
+  updated_at           DateTime          @updatedAt
+
+  evidence Evidence[]
+
+  @@index([project_id])
+  @@index([artifact_id])
+  @@index([customer_id, type])
+  @@index([status])
+}
+
+model Evidence {
+  id                   String              @id @default(cuid())
+  project_id           String
+  project              Project             @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  customer_id          String
+  claim_id             String
+  claim                Claim               @relation(fields: [claim_id], references: [id], onDelete: Cascade)
+  artifact_id          String
+  artifact             Artifact            @relation(fields: [artifact_id], references: [id], onDelete: Cascade)
+  source_coordinates   Json?
+  content              String?
+  reliability_category EvidenceReliability?
+  created_at           DateTime            @default(now())
+
+  @@index([project_id])
+  @@index([claim_id])
+  @@index([artifact_id])
 }

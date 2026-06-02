@@ -8,6 +8,8 @@ beforeAll(async () => {
 
 afterEach(async () => {
   // Clean database tables in dependency order
+  await prisma.$executeRaw`TRUNCATE TABLE "Evidence" CASCADE`;
+  await prisma.$executeRaw`TRUNCATE TABLE "Claim" CASCADE`;
   await prisma.$executeRaw`TRUNCATE TABLE "DataNeed" CASCADE`;
   await prisma.$executeRaw`TRUNCATE TABLE "AgentRun" CASCADE`;
   await prisma.$executeRaw`TRUNCATE TABLE "Task" CASCADE`;
