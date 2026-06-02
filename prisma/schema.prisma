@@ -60,6 +60,15 @@ enum AgentRunStatus {
   failed
 }
 
+enum DataNeedStatus {
+  open
+  resolving
+  resolved
+  estimated
+  unavailable
+  needs_human_input
+}
+
 // ─── Models ──────────────────────────────────────────────────────────
 
 model Project {
@@ -79,6 +88,7 @@ model Project {
   events             Event[]
   tasks              Task[]
   agent_runs         AgentRun[]
+  data_needs         DataNeed[]
 
   @@index([customer_id])
   @@index([status])
@@ -191,4 +201,24 @@ model AgentRun {
   @@index([project_id])
   @@index([task_id])
   @@index([customer_id])
+}
+
+model DataNeed {
+  id                     String         @id @default(cuid())
+  project_id             String
+  project                Project        @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  customer_id            String
+  type                   String
+  priority               String         @default("medium")
+  description            String
+  requestor_task_id      String?
+  status                 DataNeedStatus @default(open)
+  resolution_artifact_id String?
+  resolution_notes       String?
+  created_at             DateTime       @default(now())
+  updated_at             DateTime       @updatedAt
+
+  @@index([project_id, status])
+  @@index([customer_id, status])
+  @@index([status])
 }

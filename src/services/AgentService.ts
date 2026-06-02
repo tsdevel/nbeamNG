@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { logEvent } from './EventService';
 import { getArtifact } from './ArtifactService';
+import { createDataNeed } from './DataNeedService';
 import { NotFoundError } from '../lib/errors';
 
 export interface CreateAgentRunInput {
@@ -123,7 +124,7 @@ export async function executeResearchAgent(
   taskId: string,
   runId: string,
   customerId: string
-): Promise<{ artifactId: string; summary: ResearchSummary }> {
+): Promise<{ artifactId: string; summary: ResearchSummary; dataNeeds: unknown[] }> {
   const startTime = Date.now();
 
   const task = await prisma.task.findFirst({
@@ -170,6 +171,33 @@ export async function executeResearchAgent(
     },
   });
 
+  // Create DataNeeds for unanswered questions (Slice 3: dynamic agent behavior)
+  const dataNeeds = [];
+  for (const question of summary.unanswered_questions) {
+    const dn = await createDataNeed({
+      project_id: task.project_id,
+      customer_id: customerId,
+      type: 'missing_information',
+      priority: 'high',
+      description: question,
+      requestor_task_id: taskId,
+    });
+    dataNeeds.push(dn);
+  }
+
+  // If the extracted text is very short, also create a DataNeed for insufficient source material
+  if (!sourceArtifact.extracted_text || sourceArtifact.extracted_text.length < 200) {
+    const dn = await createDataNeed({
+      project_id: task.project_id,
+      customer_id: customerId,
+      type: 'insufficient_source',
+      priority: 'medium',
+      description: 'Source document appears to have limited content for a complete analysis. Additional CIM sections or supplementary documents may be required.',
+      requestor_task_id: taskId,
+    });
+    dataNeeds.push(dn);
+  }
+
   const runtimeSeconds = (Date.now() - startTime) / 1000;
 
   await completeAgentRun(runId, summaryArtifact.id, runtimeSeconds);
@@ -184,8 +212,9 @@ export async function executeResearchAgent(
       agent_type: 'research',
       output_artifact_id: summaryArtifact.id,
       runtime_seconds: runtimeSeconds,
+      dataneeds_created: dataNeeds.length,
     },
   });
 
-  return { artifactId: summaryArtifact.id, summary };
+  return { artifactId: summaryArtifact.id, summary, dataNeeds };
 }

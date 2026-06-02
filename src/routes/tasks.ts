@@ -187,6 +187,7 @@ router.post('/tasks/:id/execute-research', async (req: AuthenticatedRequest, res
       agent_run_id: runId,
       artifact_id: result.artifactId,
       summary: result.summary,
+      data_needs: result.dataNeeds,
     });
   } catch (err) {
     next(err);
