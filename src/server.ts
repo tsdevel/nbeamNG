@@ -5,6 +5,7 @@ import { apiKeyAuth } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 import projectsRouter from './routes/projects';
 import artifactsRouter from './routes/artifacts';
+import tasksRouter from './routes/tasks';
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use(apiKeyAuth);
 // Routes
 app.use('/projects', projectsRouter);
 app.use(artifactsRouter);
+app.use(tasksRouter);
 
 // Error handler
 app.use(errorHandler);

@@ -44,6 +44,22 @@ enum ArtifactStatus {
   deleted
 }
 
+enum TaskStatus {
+  pending
+  claimed
+  in_progress
+  completed
+  failed
+}
+
+enum AgentRunStatus {
+  pending
+  claimed
+  in_progress
+  completed
+  failed
+}
+
 // ─── Models ──────────────────────────────────────────────────────────
 
 model Project {
@@ -61,6 +77,8 @@ model Project {
   workspace_versions WorkspaceVersion[]
   artifacts          Artifact[]
   events             Event[]
+  tasks              Task[]
+  agent_runs         AgentRun[]
 
   @@index([customer_id])
   @@index([status])
@@ -128,4 +146,49 @@ model Event {
   @@index([event_type])
   @@index([occurred_at])
   @@index([project_id, event_type, occurred_at])
+}
+
+model Task {
+  id              String    @id @default(cuid())
+  project_id      String
+  project         Project   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  customer_id     String
+  type            String    // e.g., "research", "claim_extraction", "verification"
+  status          TaskStatus @default(pending)
+  capability      String    // e.g., "research", "pdf_ingestion"
+  payload         Json
+  lease_expires_at DateTime?
+  heartbeat_at    DateTime?
+  claimed_by      String?
+  attempts        Int       @default(0)
+  max_attempts    Int       @default(3)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  agent_runs AgentRun[]
+
+  @@index([project_id, status])
+  @@index([customer_id, status])
+  @@index([status, capability])
+  @@index([lease_expires_at])
+}
+
+model AgentRun {
+  id                 String         @id @default(cuid())
+  project_id         String
+  project            Project        @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  customer_id        String
+  task_id            String
+  task               Task           @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  agent_type         String
+  status             AgentRunStatus @default(pending)
+  runtime_seconds    Float?
+  cost_cents       Int?
+  output_artifact_id String?
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+
+  @@index([project_id])
+  @@index([task_id])
+  @@index([customer_id])
 }
