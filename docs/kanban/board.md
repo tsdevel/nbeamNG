@@ -8,8 +8,6 @@ Slices from PRD `0003-nbeamng-backend-resliced.md`. Each slice is a vertical, en
 
 | # | Slice | Type | Blocked by | PRD Stories | Status |
 |---|---|---|---|---|---|
-| 6 | **Apply Human Corrections** | AFK | #4, #5 | US 29–33 | 🟡 Ready |
-| 7 | **Suggest Impact and Regenerate** | **HITL** | #4, #5, #6 | US 34–38 | 🔴 Not started |
 | 8 | **Finalize and Export** | AFK | #4, #5, #6, #7 | US 39–42 | 🔴 Not started |
 | 9 | **Longitudinal Dossiers** | AFK | #1–#8 | US 43–46 | 🔴 Not started |
 | 10 | **Harden Deletion and Expertise Memory** | **HITL** | #1–#9 | US 47–54 | 🔴 Not started |
@@ -20,7 +18,7 @@ Slices from PRD `0003-nbeamng-backend-resliced.md`. Each slice is a vertical, en
 
 | # | Slice | Type | Blocked by | PRD Stories | Status |
 |---|---|---|---|---|---|
-| 6 | **Apply Human Corrections** | AFK | #4, #5 | US 29–33 | 🟡 Ready |
+| 7 | **Suggest Impact and Regenerate** | **HITL** | #4, #5, #6 | US 34–38 | 🟡 Ready |
 
 ---
 
@@ -38,7 +36,8 @@ Slices from PRD `0003-nbeamng-backend-resliced.md`. Each slice is a vertical, en
 | 2 | **Generate an Auditable First Draft** | AFK | US 7–12 | `6e79ada` |
 | 3 | **Track and Resolve DataNeeds** | AFK | US 13–19 | `8af6a7b` |
 | 4 | **Govern Material Claims** | AFK | US 20–24 | `28783ba` |
-| 5 | **Verify Claims and Detect Contradictions** | AFK | US 25–28 | `uncommitted` |
+| 5 | **Verify Claims and Detect Contradictions** | AFK | US 25–28 | `ecee8e5` |
+| 6 | **Apply Human Corrections** | AFK | US 29–33 | `e0050d9` |
 
 ---
 
@@ -50,7 +49,7 @@ Slices from PRD `0003-nbeamng-backend-resliced.md`. Each slice is a vertical, en
         ├── #3 DataNeeds
         └── #4 Govern Material Claims
               └── #5 Verify Claims
-                    └── #6 Apply Corrections
+                    └── ✅ #6 Apply Corrections
                           └── #7 Suggest Impact
                                 └── #8 Finalize & Export
                                       └── #9 Dossiers
