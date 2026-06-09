@@ -1,8 +1,8 @@
 # NbeamNG Architecture
 
-> **Status:** In Progress — Slices 1–7 implemented and tested. Slices 8–10 pending.  
+> **Status:** In Progress — Slices 1–8 implemented and tested. Slices 9–10 pending.  
 > **Last updated:** 2026-06-09  
-> **Next step:** Begin Slice 8 implementation (Finalize and Export — completion evaluator, deterministic PPTX/PDF rendering, export lineage).
+> **Next step:** Begin Slice 9 implementation (Longitudinal Dossiers — linked follow-up projects, historical claim comparison, tenant-scoped context reuse).
 
 ---
 
