@@ -15,6 +15,7 @@ import {
 import {
   createAgentRun,
   executeResearchAgent,
+  executeRegenerationAgent,
 } from '../services/AgentService';
 import { ValidationError } from '../lib/errors';
 
@@ -188,6 +189,38 @@ router.post('/tasks/:id/execute-research', async (req: AuthenticatedRequest, res
       artifact_id: result.artifactId,
       summary: result.summary,
       data_needs: result.dataNeeds,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /tasks/:id/execute-regeneration — convenience endpoint for Slice 6 demo
+router.post('/tasks/:id/execute-regeneration', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const task = await getTask(req.params.id, req.customer_id!);
+
+    if (task.status !== 'claimed' && task.status !== 'in_progress') {
+      res.status(400).json({ error: { code: 'INVALID_STATE', message: 'Task must be claimed or in-progress' } });
+      return;
+    }
+
+    const runId = task.agent_runs[0]?.id;
+    if (!runId) {
+      res.status(400).json({ error: { code: 'NO_AGENT_RUN', message: 'No agent run associated with this task' } });
+      return;
+    }
+
+    const result = await executeRegenerationAgent(task.id, runId, req.customer_id!);
+
+    // Complete the task with output reference
+    await completeTask(task.id, req.customer_id!, { output_artifact_id: result.artifactId });
+
+    res.json({
+      task_id: task.id,
+      agent_run_id: runId,
+      artifact_id: result.artifactId,
+      lineage: result.lineage,
     });
   } catch (err) {
     next(err);

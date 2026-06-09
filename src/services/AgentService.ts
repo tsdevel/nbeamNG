@@ -218,3 +218,184 @@ export async function executeResearchAgent(
 
   return { artifactId: summaryArtifact.id, summary, dataNeeds };
 }
+
+// ─── Regeneration Agent (deterministic, Slice 6) ───────────────────────
+
+export interface RegenerationResult {
+  artifactId: string;
+  lineage: {
+    review_comment_id: string;
+    invalidated_claim_ids: string[];
+    regenerated_sections: string[];
+    parent_version_id: string;
+  };
+}
+
+/**
+ * Execute the Slice 6 regeneration agent.
+ * Reads a review comment and invalidated claims, produces a corrected
+ * research_summary artifact in the target workspace version.
+ */
+export async function executeRegenerationAgent(
+  taskId: string,
+  runId: string,
+  customerId: string
+): Promise<RegenerationResult> {
+  const startTime = Date.now();
+
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, customer_id: customerId },
+    include: { project: true },
+  });
+
+  if (!task) {
+    throw new NotFoundError('Task', taskId);
+  }
+
+  await startAgentRun(runId);
+
+  const payload = task.payload as {
+    version_id?: string;
+    section_names?: string[];
+    review_comment_id?: string;
+    review_comment_text?: string;
+  };
+
+  const versionId = payload.version_id;
+  const sectionNames = payload.section_names ?? [];
+  const reviewCommentId = payload.review_comment_id;
+  const reviewCommentText = payload.review_comment_text ?? '';
+
+  if (!versionId || !reviewCommentId) {
+    throw new Error('Task payload missing version_id or review_comment_id');
+  }
+
+  // Verify version belongs to this project
+  const version = await prisma.workspaceVersion.findFirst({
+    where: { id: versionId, project_id: task.project_id, customer_id: customerId },
+  });
+  if (!version) {
+    throw new Error('Target workspace version not found');
+  }
+
+  // Find review comment and invalidated claims
+  const reviewComment = await prisma.reviewComment.findFirst({
+    where: { id: reviewCommentId, project_id: task.project_id, customer_id: customerId },
+    include: { invalidated_claims: true },
+  });
+  if (!reviewComment) {
+    throw new Error('Review comment not found');
+  }
+
+  const invalidatedClaimIds = reviewComment.invalidated_claims.map((c) => c.id);
+
+  // Find the original research_summary from the parent version to use as base
+  const parentVersion = version.parent_version_id
+    ? await prisma.workspaceVersion.findFirst({
+        where: { id: version.parent_version_id, customer_id: customerId },
+      })
+    : null;
+
+  let baseSummary: ResearchSummary | null = null;
+  if (parentVersion) {
+    const parentArtifact = await prisma.artifact.findFirst({
+      where: {
+        project_id: task.project_id,
+        workspace_version_id: parentVersion.id,
+        customer_id: customerId,
+        type: 'research_summary',
+      },
+    });
+    if (parentArtifact?.extracted_text) {
+      try {
+        baseSummary = JSON.parse(parentArtifact.extracted_text) as ResearchSummary;
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }
+
+  // Build regenerated summary: mark corrected sections
+  const regeneratedSummary: Record<string, unknown> = baseSummary
+    ? { ...baseSummary }
+    : {
+        company_overview: 'Regenerated content',
+        business_model: 'Regenerated content',
+        revenue_model: 'Regenerated content',
+        key_financial_figures: [],
+        customers_and_concentration: 'Regenerated content',
+        market_and_competitors: 'Regenerated content',
+        strengths: [],
+        risks: [],
+        unanswered_questions: [],
+        source_references: [],
+      };
+
+  // Apply the correction to each selected section
+  for (const section of sectionNames) {
+    const key = section as keyof ResearchSummary;
+    if (key in regeneratedSummary) {
+      const current = regeneratedSummary[key];
+      if (typeof current === 'string') {
+        regeneratedSummary[key] = `${current} [CORRECTED: ${reviewCommentText}]`;
+      } else if (Array.isArray(current)) {
+        regeneratedSummary[key] = [...current, `[CORRECTION APPLIED: ${reviewCommentText}]`];
+      }
+    }
+  }
+
+  // Create regenerated research_summary artifact in target version
+  const regeneratedArtifact = await prisma.artifact.create({
+    data: {
+      id: `reg-${task.project_id.slice(0, 8)}-${Date.now().toString(36)}`,
+      project_id: task.project_id,
+      workspace_version_id: versionId,
+      customer_id: customerId,
+      type: 'research_summary',
+      name: `Research Summary (Regenerated) — ${task.project.name}`,
+      mime_type: 'application/json',
+      extracted_text: JSON.stringify(regeneratedSummary, null, 2),
+      source_artifact_ids: [],
+      status: 'draft',
+      metadata: {
+        lineage: {
+          review_comment_id: reviewCommentId,
+          invalidated_claim_ids: invalidatedClaimIds,
+          regenerated_sections: sectionNames,
+          parent_version_id: version.parent_version_id,
+        },
+        correction_applied: reviewCommentText,
+        regenerated_at: new Date().toISOString(),
+      } as Prisma.InputJsonValue,
+    },
+  });
+
+  const runtimeSeconds = (Date.now() - startTime) / 1000;
+
+  await completeAgentRun(runId, regeneratedArtifact.id, runtimeSeconds);
+
+  await logEvent({
+    project_id: task.project_id,
+    customer_id: customerId,
+    event_type: 'agent_run_completed',
+    payload: {
+      run_id: runId,
+      task_id: taskId,
+      agent_type: 'regeneration',
+      output_artifact_id: regeneratedArtifact.id,
+      runtime_seconds: runtimeSeconds,
+      regenerated_sections: sectionNames,
+      review_comment_id: reviewCommentId,
+    },
+  });
+
+  return {
+    artifactId: regeneratedArtifact.id,
+    lineage: {
+      review_comment_id: reviewCommentId,
+      invalidated_claim_ids: invalidatedClaimIds,
+      regenerated_sections: sectionNames,
+      parent_version_id: version.parent_version_id ?? '',
+    },
+  };
+}

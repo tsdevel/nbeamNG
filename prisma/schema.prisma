@@ -86,6 +86,16 @@ enum ClaimStatus {
   supported
   unsupported
   needs_review
+  invalidated
+}
+
+enum ReviewCommentType {
+  correction
+  new_evidence
+  judgment_change
+  style_change
+  question
+  approval
 }
 
 enum EvidenceReliability {
@@ -118,6 +128,7 @@ model Project {
   data_needs         DataNeed[]
   claims             Claim[]
   evidence           Evidence[]
+  review_comments    ReviewComment[]
 
   @@index([customer_id])
   @@index([status])
@@ -133,8 +144,9 @@ model WorkspaceVersion {
   parent_version_id String?
   created_at        DateTime @default(now())
 
-  artifacts Artifact[]
-  claims    Claim[]
+  artifacts       Artifact[]
+  claims            Claim[]
+  review_comments   ReviewComment[]
 
   @@unique([project_id, version_number])
   @@index([project_id])
@@ -257,22 +269,25 @@ model DataNeed {
 }
 
 model Claim {
-  id                   String            @id @default(cuid())
-  project_id           String
-  project              Project           @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  customer_id          String
-  workspace_version_id String
-  workspace_version    WorkspaceVersion  @relation(fields: [workspace_version_id], references: [id], onDelete: Cascade)
-  artifact_id          String
-  artifact             Artifact          @relation(fields: [artifact_id], references: [id], onDelete: Cascade)
-  type                 ClaimType
-  text                 String
-  status               ClaimStatus       @default(draft)
-  source_reliability   EvidenceReliability?
-  source_coordinates   Json?
-  metadata             Json?
-  created_at           DateTime          @default(now())
-  updated_at           DateTime          @updatedAt
+  id                        String            @id @default(cuid())
+  project_id                String
+  project                   Project           @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  customer_id               String
+  workspace_version_id      String
+  workspace_version         WorkspaceVersion  @relation(fields: [workspace_version_id], references: [id], onDelete: Cascade)
+  artifact_id               String
+  artifact                  Artifact          @relation(fields: [artifact_id], references: [id], onDelete: Cascade)
+  type                      ClaimType
+  text                      String
+  status                    ClaimStatus       @default(draft)
+  source_reliability        EvidenceReliability?
+  source_coordinates        Json?
+  metadata                  Json?
+  invalidated_by_comment_id String?
+  invalidated_by_comment    ReviewComment?    @relation("ClaimInvalidatedBy", fields: [invalidated_by_comment_id], references: [id])
+  review_comments           ReviewComment[]   @relation("ReviewCommentTarget")
+  created_at                DateTime          @default(now())
+  updated_at                DateTime          @updatedAt
 
   evidence Evidence[]
 
@@ -280,6 +295,27 @@ model Claim {
   @@index([artifact_id])
   @@index([customer_id, type])
   @@index([status])
+}
+
+model ReviewComment {
+  id                   String             @id @default(cuid())
+  project_id           String
+  project              Project            @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  customer_id          String
+  workspace_version_id String
+  workspace_version    WorkspaceVersion   @relation(fields: [workspace_version_id], references: [id], onDelete: Cascade)
+  type                 ReviewCommentType
+  text                 String
+  target_claim_id      String?
+  target_claim         Claim?             @relation("ReviewCommentTarget", fields: [target_claim_id], references: [id], onDelete: SetNull)
+  invalidated_claims   Claim[]            @relation("ClaimInvalidatedBy")
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+
+  @@index([project_id])
+  @@index([workspace_version_id])
+  @@index([customer_id])
+  @@index([target_claim_id])
 }
 
 model Evidence {

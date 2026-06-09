@@ -3,6 +3,13 @@ import { z } from 'zod';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { createProject, getProject, listProjects } from '../services/ProjectService';
 import { listArtifacts } from '../services/ArtifactService';
+import {
+  createReviewComment,
+  listReviewComments,
+  createWorkspaceVersion,
+  listWorkspaceVersions,
+  createRegenerationTask,
+} from '../services/ReviewService';
 import { ValidationError } from '../lib/errors';
 
 const router = Router();
@@ -12,6 +19,23 @@ const createProjectSchema = z.object({
   target_company: z.string().optional(),
   description: z.string().optional(),
   confidentiality_class: z.enum(['confidential', 'public', 'unknown']).optional(),
+});
+
+const createReviewSchema = z.object({
+  workspace_version_id: z.string().min(1),
+  type: z.enum(['correction', 'new_evidence', 'judgment_change', 'style_change', 'question', 'approval']),
+  text: z.string().min(1),
+  target_claim_id: z.string().optional(),
+});
+
+const createVersionSchema = z.object({
+  parent_version_id: z.string().min(1),
+});
+
+const createRegenerationSchema = z.object({
+  version_id: z.string().min(1),
+  section_names: z.array(z.string().min(1)).min(1),
+  review_comment_id: z.string().min(1),
 });
 
 // POST /projects
@@ -78,6 +102,85 @@ router.get('/:id/artifacts', async (req: AuthenticatedRequest, res: Response, ne
       workspace_version: currentVersion.version_number,
       artifacts,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/reviews
+router.post('/:id/reviews', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const parsed = createReviewSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', '));
+    }
+
+    const comment = await createReviewComment(req.params.id, req.customer_id!, {
+      workspace_version_id: parsed.data.workspace_version_id,
+      type: parsed.data.type,
+      text: parsed.data.text,
+      target_claim_id: parsed.data.target_claim_id,
+    });
+
+    res.status(201).json(comment);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /projects/:id/reviews
+router.get('/:id/reviews', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const comments = await listReviewComments(req.params.id, req.customer_id!);
+    res.json({ reviews: comments });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/workspace-versions
+router.post('/:id/workspace-versions', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const parsed = createVersionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', '));
+    }
+
+    const version = await createWorkspaceVersion(req.params.id, req.customer_id!, {
+      parent_version_id: parsed.data.parent_version_id,
+    });
+
+    res.status(201).json(version);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /projects/:id/workspace-versions
+router.get('/:id/workspace-versions', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const versions = await listWorkspaceVersions(req.params.id, req.customer_id!);
+    res.json({ versions });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/regenerate
+router.post('/:id/regenerate', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const parsed = createRegenerationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', '));
+    }
+
+    const task = await createRegenerationTask(req.params.id, req.customer_id!, {
+      version_id: parsed.data.version_id,
+      section_names: parsed.data.section_names,
+      review_comment_id: parsed.data.review_comment_id,
+    });
+
+    res.status(201).json(task);
   } catch (err) {
     next(err);
   }
