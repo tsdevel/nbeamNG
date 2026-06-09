@@ -1,8 +1,8 @@
 # NbeamNG Architecture
 
-> **Status:** In Progress — Slices 1–6 implemented and tested. Slices 7–10 pending.  
+> **Status:** In Progress — Slices 1–7 implemented and tested. Slices 8–10 pending.  
 > **Last updated:** 2026-06-09  
-> **Next step:** Slice 7 (Suggest Impact and Regenerate) is **HITL** — requires human design review on dependency graph, invalidation rules, and conservative over-invalidation strategy before implementation begins.
+> **Next step:** Begin Slice 8 implementation (Finalize and Export — completion evaluator, deterministic PPTX/PDF rendering, export lineage).
 
 ---
 
