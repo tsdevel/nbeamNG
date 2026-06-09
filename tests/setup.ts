@@ -15,6 +15,7 @@ afterEach(async () => {
   await prisma.$executeRaw`TRUNCATE TABLE "AgentRun" CASCADE`;
   await prisma.$executeRaw`TRUNCATE TABLE "Task" CASCADE`;
   await prisma.$executeRaw`TRUNCATE TABLE "Event" CASCADE`;
+  await prisma.$executeRaw`TRUNCATE TABLE "ExpertiseLesson" CASCADE`;
   await prisma.$executeRaw`TRUNCATE TABLE "Artifact" CASCADE`;
   await prisma.$executeRaw`TRUNCATE TABLE "WorkspaceVersion" CASCADE`;
   await prisma.$executeRaw`TRUNCATE TABLE "Project" CASCADE`;

@@ -2,6 +2,27 @@ import { prisma } from '../lib/prisma';
 import { getArtifact } from './ArtifactService';
 import { ValidationError, NotFoundError } from '../lib/errors';
 import type { ResearchSummary } from './AgentService';
+import type { RetentionClass } from '@prisma/client';
+
+function retentionClassForClaimType(type: string): RetentionClass {
+  switch (type) {
+    case 'financial_fact':
+    case 'operational_kpi':
+    case 'valuation_input':
+    case 'calculated_metric':
+    case 'management_assertion':
+      return 'company_specific';
+    case 'market_fact':
+      return 'market_knowledge';
+    case 'analyst_judgment':
+    case 'hypothesis':
+      return 'process_framework';
+    case 'risk':
+      return 'public';
+    default:
+      return 'unknown';
+  }
+}
 
 export async function extractClaimsFromArtifact(
   artifactId: string,
@@ -49,6 +70,8 @@ export async function extractClaimsFromArtifact(
     type: 'financial_fact' | 'operational_kpi' | 'market_fact' | 'valuation_input' | 'management_assertion' | 'calculated_metric' | 'analyst_judgment' | 'risk' | 'hypothesis',
     reliability?: 'audited_filing' | 'management_assertion' | 'analyst_estimate' | 'third_party_verified' | 'unverified'
   ) {
+    const retentionClass = retentionClassForClaimType(type);
+
     const claim = await prisma.claim.create({
       data: {
         project_id: projectId,
@@ -59,6 +82,7 @@ export async function extractClaimsFromArtifact(
         text: text.slice(0, 1000),
         status: 'draft',
         source_reliability: reliability ?? 'unverified',
+        retention_class: retentionClass,
         source_coordinates: {
           artifact_id: artifactId,
           section: type,
@@ -74,6 +98,7 @@ export async function extractClaimsFromArtifact(
         artifact_id: artifactId,
         content: text.slice(0, 2000),
         reliability_category: reliability ?? 'unverified',
+        retention_class: retentionClass,
         source_coordinates: {
           artifact_id: artifactId,
           section: type,

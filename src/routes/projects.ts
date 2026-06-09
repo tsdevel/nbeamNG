@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { createProject, getProject, listProjects } from '../services/ProjectService';
+import { createProject, getProject, listProjects, getLinkedProjects, getDossierClaims } from '../services/ProjectService';
 import { listArtifacts } from '../services/ArtifactService';
 import {
   createReviewComment,
@@ -15,6 +15,8 @@ import {
   confirmImpact,
 } from '../services/ImpactAnalyzerService';
 import { evaluateCompletion } from '../services/CompletionEvaluatorService';
+import { closeoutProject, redactProject, purgeProject } from '../services/DeletionService';
+import { distillExpertise } from '../services/ExpertiseService';
 import { ValidationError } from '../lib/errors';
 
 const router = Router();
@@ -24,6 +26,8 @@ const createProjectSchema = z.object({
   target_company: z.string().optional(),
   description: z.string().optional(),
   confidentiality_class: z.enum(['confidential', 'public', 'unknown']).optional(),
+  parent_project_id: z.string().optional(),
+  dossier_id: z.string().optional(),
 });
 
 const createReviewSchema = z.object({
@@ -43,6 +47,16 @@ const createRegenerationSchema = z.object({
   review_comment_id: z.string().min(1),
 });
 
+const distillSchema = z.object({
+  lessons: z.array(
+    z.object({
+      title: z.string().min(1),
+      content: z.string().min(1),
+      category: z.string().min(1),
+    })
+  ).min(1),
+});
+
 // POST /projects
 router.post('/', async (req: AuthenticatedRequest, res: Response, next) => {
   try {
@@ -57,6 +71,8 @@ router.post('/', async (req: AuthenticatedRequest, res: Response, next) => {
       target_company: parsed.data.target_company,
       description: parsed.data.description,
       confidentiality_class: parsed.data.confidentiality_class,
+      parent_project_id: parsed.data.parent_project_id,
+      dossier_id: parsed.data.dossier_id,
     });
 
     res.status(201).json(project);
@@ -208,6 +224,70 @@ router.post('/:id/reviews/:reviewId/confirm-impact', async (req: AuthenticatedRe
     const result = await confirmImpact(req.params.reviewId, req.params.id, req.customer_id!, {
       confirmed_sections: confirmedSections,
     });
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /projects/:id/linked
+router.get('/:id/linked', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const result = await getLinkedProjects(req.params.id, req.customer_id!);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /projects/:id/dossier
+router.get('/:id/dossier', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const result = await getDossierClaims(req.params.id, req.customer_id!);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/closeout
+router.post('/:id/closeout', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const result = await closeoutProject(req.params.id, req.customer_id!);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/redact
+router.post('/:id/redact', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const result = await redactProject(req.params.id, req.customer_id!);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/purge
+router.post('/:id/purge', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const result = await purgeProject(req.params.id, req.customer_id!);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/distill
+router.post('/:id/distill', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const parsed = distillSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', '));
+    }
+    const result = await distillExpertise(req.params.id, req.customer_id!, parsed.data.lessons);
     res.status(201).json(result);
   } catch (err) {
     next(err);

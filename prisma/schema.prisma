@@ -106,6 +106,20 @@ enum EvidenceReliability {
   unverified
 }
 
+enum RetentionClass {
+  public
+  market_knowledge
+  process_framework
+  company_specific
+  unknown
+}
+
+enum ArtifactPurgeStatus {
+  pending
+  purged
+  failed
+}
+
 // ─── Models ──────────────────────────────────────────────────────────
 
 model Project {
@@ -117,6 +131,10 @@ model Project {
   confidentiality_class ConfidentialityClass   @default(unknown)
   status                ProjectStatus        @default(active)
   retention_policy      String? // Reserved; sophisticated config deferred to later slices
+  parent_project_id     String?
+  parent_project        Project?             @relation("ProjectDossier", fields: [parent_project_id], references: [id], onDelete: SetNull)
+  child_projects        Project[]            @relation("ProjectDossier")
+  dossier_id            String?
   created_at            DateTime             @default(now())
   updated_at            DateTime             @updatedAt
 
@@ -133,6 +151,9 @@ model Project {
   @@index([customer_id])
   @@index([status])
   @@index([customer_id, status])
+  @@index([parent_project_id])
+  @@index([dossier_id])
+  @@index([customer_id, dossier_id])
 }
 
 model WorkspaceVersion {
@@ -169,6 +190,7 @@ model Artifact {
   extracted_text       String?  @db.Text
   source_artifact_ids  String[] // Lightweight lineage for Slice 1; join tables in later slices
   status               ArtifactStatus @default(draft)
+  purge_status         ArtifactPurgeStatus?
   metadata             Json? // Flexible schema per artifact type
   created_at           DateTime       @default(now())
   updated_at           DateTime       @updatedAt
@@ -283,6 +305,7 @@ model Claim {
   source_reliability        EvidenceReliability?
   source_coordinates        Json?
   metadata                  Json?
+  retention_class           RetentionClass    @default(unknown)
   invalidated_by_comment_id String?
   invalidated_by_comment    ReviewComment?    @relation("ClaimInvalidatedBy", fields: [invalidated_by_comment_id], references: [id])
   review_comments           ReviewComment[]   @relation("ReviewCommentTarget")
@@ -295,6 +318,7 @@ model Claim {
   @@index([artifact_id])
   @@index([customer_id, type])
   @@index([status])
+  @@index([retention_class])
 }
 
 model ReviewComment {
@@ -331,9 +355,28 @@ model Evidence {
   source_coordinates   Json?
   content              String?
   reliability_category EvidenceReliability?
+  retention_class      RetentionClass      @default(unknown)
   created_at           DateTime            @default(now())
 
   @@index([project_id])
   @@index([claim_id])
   @@index([artifact_id])
+  @@index([retention_class])
+}
+
+model ExpertiseLesson {
+  id                String    @id @default(cuid())
+  customer_id       String
+  title             String
+  content           String
+  source_project_id String?
+  category          String    // e.g. checklist, methodology, playbook
+  status            String    @default("draft") // draft, approved, rejected
+  scrubbed          Boolean   @default(false)
+  created_at        DateTime  @default(now())
+  approved_at       DateTime?
+
+  @@index([customer_id])
+  @@index([customer_id, status])
+  @@index([source_project_id])
 }

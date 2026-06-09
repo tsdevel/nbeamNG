@@ -23,7 +23,7 @@ Slices from PRD `0003-nbeamng-backend-resliced.md`. Each slice is a vertical, en
 
 ## 🔵 In Progress
 
-*Nothing in progress yet.*
+*Nothing in progress. All 10 slices complete.*
 
 ---
 
@@ -39,6 +39,8 @@ Slices from PRD `0003-nbeamng-backend-resliced.md`. Each slice is a vertical, en
 | 6 | **Apply Human Corrections** | AFK | US 29–33 | `e0050d9` |
 | 7 | **Suggest Impact and Regenerate** | AFK | US 34–38 | `09272b7` |
 | 8 | **Finalize and Export** | AFK | US 39–42 | `3525ecb` |
+| 9 | **Longitudinal Dossiers** | AFK | US 43–46 | current |
+| 10 | **Harden Deletion and Expertise Memory** | HITL | US 47–54 | current |
 
 ---
 
