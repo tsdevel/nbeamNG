@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { extractClaimsFromArtifact, listClaims, getClaim } from '../services/ClaimService';
+import { verifyClaims } from '../services/VerificationService';
 import { ValidationError } from '../lib/errors';
 
 const router = Router();
@@ -36,6 +37,16 @@ router.get('/claims/:id', async (req: AuthenticatedRequest, res: Response, next)
   try {
     const claim = await getClaim(req.params.id, req.customer_id!);
     res.json(claim);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/verify-claims
+router.post('/projects/:id/verify-claims', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const result = await verifyClaims(req.params.id, req.customer_id!);
+    res.json(result);
   } catch (err) {
     next(err);
   }

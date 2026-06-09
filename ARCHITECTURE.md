@@ -1,8 +1,8 @@
 # NbeamNG Architecture
 
-> **Status:** Design phase — decisions locked, implementation not started.  
-> **Last updated:** 2026-05-28  
-> **Next step:** Begin Slice 1 implementation (project creation + document upload).
+> **Status:** In Progress — Slices 1–5 implemented and tested. Slices 6–10 pending.  
+> **Last updated:** 2026-06-09  
+> **Next step:** Begin Slice 6 implementation (Apply Human Corrections — structured review comments, claim invalidation, immutable workspace v2, manual section regeneration).
 
 ---
 

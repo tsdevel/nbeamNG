@@ -8,12 +8,7 @@ Slices from PRD `0003-nbeamng-backend-resliced.md`. Each slice is a vertical, en
 
 | # | Slice | Type | Blocked by | PRD Stories | Status |
 |---|---|---|---|---|---|
-| 1 | **Ingest a Deal** | AFK | — | US 1–6 | 🔴 Not started |
-| 2 | **Generate an Auditable First Draft** | AFK | #1 | US 7–12 | 🔴 Not started |
-| 3 | **Track and Resolve DataNeeds** | AFK | #2 | US 13–19 | 🔴 Not started |
-| 4 | **Govern Material Claims** | AFK | #2 | US 20–24 | 🔴 Not started |
-| 5 | **Verify Claims and Detect Contradictions** | AFK | #4 | US 25–28 | 🔴 Not started |
-| 6 | **Apply Human Corrections** | AFK | #4, #5 | US 29–33 | 🔴 Not started |
+| 6 | **Apply Human Corrections** | AFK | #4, #5 | US 29–33 | 🟡 Ready |
 | 7 | **Suggest Impact and Regenerate** | **HITL** | #4, #5, #6 | US 34–38 | 🔴 Not started |
 | 8 | **Finalize and Export** | AFK | #4, #5, #6, #7 | US 39–42 | 🔴 Not started |
 | 9 | **Longitudinal Dossiers** | AFK | #1–#8 | US 43–46 | 🔴 Not started |
@@ -23,7 +18,9 @@ Slices from PRD `0003-nbeamng-backend-resliced.md`. Each slice is a vertical, en
 
 ## 🟡 Ready
 
-*Nothing ready yet — start with #1.*
+| # | Slice | Type | Blocked by | PRD Stories | Status |
+|---|---|---|---|---|---|
+| 6 | **Apply Human Corrections** | AFK | #4, #5 | US 29–33 | 🟡 Ready |
 
 ---
 
@@ -35,7 +32,13 @@ Slices from PRD `0003-nbeamng-backend-resliced.md`. Each slice is a vertical, en
 
 ## ✅ Done
 
-*Nothing done yet.*
+| # | Slice | Type | PRD Stories | Commit |
+|---|---|---|---|---|
+| 1 | **Ingest a Deal** | AFK | US 1–6 | `eb63929` |
+| 2 | **Generate an Auditable First Draft** | AFK | US 7–12 | `6e79ada` |
+| 3 | **Track and Resolve DataNeeds** | AFK | US 13–19 | `8af6a7b` |
+| 4 | **Govern Material Claims** | AFK | US 20–24 | `28783ba` |
+| 5 | **Verify Claims and Detect Contradictions** | AFK | US 25–28 | `uncommitted` |
 
 ---
 
