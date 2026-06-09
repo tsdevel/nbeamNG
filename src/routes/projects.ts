@@ -14,6 +14,7 @@ import {
   analyzeImpact,
   confirmImpact,
 } from '../services/ImpactAnalyzerService';
+import { evaluateCompletion } from '../services/CompletionEvaluatorService';
 import { ValidationError } from '../lib/errors';
 
 const router = Router();
@@ -208,6 +209,16 @@ router.post('/:id/reviews/:reviewId/confirm-impact', async (req: AuthenticatedRe
       confirmed_sections: confirmedSections,
     });
     res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/finalize
+router.post('/:id/finalize', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const result = await evaluateCompletion(req.params.id, req.customer_id!);
+    res.status(result.passed ? 200 : 409).json(result);
   } catch (err) {
     next(err);
   }
