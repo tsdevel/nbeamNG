@@ -10,6 +10,10 @@ import {
   listWorkspaceVersions,
   createRegenerationTask,
 } from '../services/ReviewService';
+import {
+  analyzeImpact,
+  confirmImpact,
+} from '../services/ImpactAnalyzerService';
 import { ValidationError } from '../lib/errors';
 
 const router = Router();
@@ -181,6 +185,29 @@ router.post('/:id/regenerate', async (req: AuthenticatedRequest, res: Response, 
     });
 
     res.status(201).json(task);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /projects/:id/reviews/:reviewId/impact
+router.get('/:id/reviews/:reviewId/impact', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const result = await analyzeImpact(req.params.reviewId, req.params.id, req.customer_id!);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/:id/reviews/:reviewId/confirm-impact
+router.post('/:id/reviews/:reviewId/confirm-impact', async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const confirmedSections = (req.body.confirmed_sections as string[]) || [];
+    const result = await confirmImpact(req.params.reviewId, req.params.id, req.customer_id!, {
+      confirmed_sections: confirmedSections,
+    });
+    res.status(201).json(result);
   } catch (err) {
     next(err);
   }

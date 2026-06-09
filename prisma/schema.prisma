@@ -309,6 +309,7 @@ model ReviewComment {
   target_claim_id      String?
   target_claim         Claim?             @relation("ReviewCommentTarget", fields: [target_claim_id], references: [id], onDelete: SetNull)
   invalidated_claims   Claim[]            @relation("ClaimInvalidatedBy")
+  metadata             Json?
   created_at           DateTime           @default(now())
   updated_at           DateTime           @updatedAt
 
