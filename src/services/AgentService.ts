@@ -4,6 +4,13 @@ import { logEvent } from './EventService';
 import { getArtifact } from './ArtifactService';
 import { createDataNeed } from './DataNeedService';
 import { NotFoundError } from '../lib/errors';
+import {
+  completeLLM,
+  isLLMConfigured,
+  parseLLMJson,
+  estimateCostCents,
+  type LLMMessage,
+} from './LLMService';
 
 export interface CreateAgentRunInput {
   project_id: string;
@@ -58,13 +65,11 @@ export async function completeAgentRun(
 export async function failAgentRun(runId: string, errorMessage: string) {
   return prisma.agentRun.update({
     where: { id: runId },
-    data: {
-      status: 'failed',
-    },
+    data: { status: 'failed' },
   });
 }
 
-// ─── Research Summary Agent (deterministic, Slice 2) ───────────────────
+// ─── Research Summary Agent ──────────────────────────────────────────────
 
 export interface ResearchSummary {
   company_overview: string;
@@ -83,9 +88,9 @@ export interface ResearchSummary {
   }>;
 }
 
-function generateSummaryFromText(text: string, sourceArtifactId: string): ResearchSummary {
-  // Deterministic template-based summary for Slice 2.
-  // In production, this would call an LLM via the abstracted provider interface.
+// ─── Stub fallback (deterministic, used when no LLM API key configured) ───
+
+function generateSummaryFromStub(text: string, sourceArtifactId: string): ResearchSummary {
   const sentences = text
     .split(/[.!?\n]+/)
     .map((s) => s.trim())
@@ -115,6 +120,92 @@ function generateSummaryFromText(text: string, sourceArtifactId: string): Resear
   };
 }
 
+// ─── LLM-based summary generation ────────────────────────────────────────
+
+async function generateSummaryFromLLM(
+  text: string,
+  sourceArtifactId: string
+): Promise<{ summary: ResearchSummary; usage: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+  const MAX_CHARS = 300000; // ~75K tokens for Llama 3.1 70B (128K context)
+  const truncatedText =
+    text.length > MAX_CHARS
+      ? text.slice(0, MAX_CHARS) + '\n\n[Document truncated for length]'
+      : text;
+
+  const messages: LLMMessage[] = [
+    {
+      role: 'system',
+      content:
+        'You are an expert investment analyst specializing in private equity and M&A due diligence. You analyze CIM (Confidential Information Memorandum) documents and produce structured investment summaries. You always return valid JSON.',
+    },
+    {
+      role: 'user',
+      content: `Analyze the following CIM document and produce a structured investment summary in JSON format.
+
+Return a JSON object with these exact fields:
+- company_overview: string (comprehensive company description, history, products, market position)
+- business_model: string (how the company makes money, value proposition, go-to-market)
+- revenue_model: string (revenue streams, pricing model, key metrics)
+- key_financial_figures: string[] (array of specific financial facts with dollar amounts, percentages, or ratios. Extract EVERY financial figure mentioned: revenue, growth rates, margins, EBITDA, etc.)
+- customers_and_concentration: string (customer base, concentration risk, top customers if mentioned)
+- market_and_competitors: string (market size, TAM/SAM/SOM, competitive landscape, key competitors)
+- strengths: string[] (investment strengths and competitive advantages)
+- risks: string[] (key risks and concerns)
+- unanswered_questions: string[] (missing information that would be needed for a complete investment analysis)
+- source_references: array of objects with {section: string, excerpt: string} (key excerpts from the document that support the summary)
+
+If a field has no relevant information, use an empty string or empty array.
+
+CIM Document:
+${truncatedText}
+
+Return ONLY valid JSON. Do not include markdown formatting or explanations.`,
+    },
+  ];
+
+  const result = await completeLLM({ messages, jsonMode: true, temperature: 0.3, maxTokens: 4096 });
+  const parsed = parseLLMJson(result.content);
+
+  const summary: ResearchSummary = {
+    company_overview: parsed.company_overview || '',
+    business_model: parsed.business_model || '',
+    revenue_model: parsed.revenue_model || '',
+    key_financial_figures: Array.isArray(parsed.key_financial_figures) ? parsed.key_financial_figures : [],
+    customers_and_concentration: parsed.customers_and_concentration || '',
+    market_and_competitors: parsed.market_and_competitors || '',
+    strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+    risks: Array.isArray(parsed.risks) ? parsed.risks : [],
+    unanswered_questions: Array.isArray(parsed.unanswered_questions) ? parsed.unanswered_questions : [],
+    source_references: Array.isArray(parsed.source_references)
+      ? parsed.source_references.map((ref: any) => ({
+          section: ref.section || 'full_text',
+          artifact_id: sourceArtifactId,
+          excerpt: ref.excerpt || '',
+        }))
+      : [{ section: 'full_text', artifact_id: sourceArtifactId, excerpt: truncatedText.slice(0, 200) }],
+  };
+
+  return { summary, usage: result.usage };
+}
+
+/**
+ * Generate research summary — uses LLM when configured, falls back to deterministic stub.
+ */
+export async function generateSummaryFromText(
+  text: string,
+  sourceArtifactId: string
+): Promise<{ summary: ResearchSummary; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+  if (!isLLMConfigured()) {
+    return { summary: generateSummaryFromStub(text, sourceArtifactId) };
+  }
+  try {
+    return await generateSummaryFromLLM(text, sourceArtifactId);
+  } catch (err) {
+    console.warn('LLM summary generation failed, falling back to stub:', err instanceof Error ? err.message : String(err));
+    return { summary: generateSummaryFromStub(text, sourceArtifactId) };
+  }
+}
+
 /**
  * Execute the Slice 2 research agent.
  * Reads the extracted_text artifact from the task payload,
@@ -124,7 +215,7 @@ export async function executeResearchAgent(
   taskId: string,
   runId: string,
   customerId: string
-): Promise<{ artifactId: string; summary: ResearchSummary; dataNeeds: unknown[] }> {
+): Promise<{ artifactId: string; summary: ResearchSummary; dataNeeds: unknown[]; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
   const startTime = Date.now();
 
   const task = await prisma.task.findFirst({
@@ -151,8 +242,8 @@ export async function executeResearchAgent(
     throw new Error('Source artifact has no extracted text');
   }
 
-  // Generate structured summary
-  const summary = generateSummaryFromText(sourceArtifact.extracted_text, sourceArtifactId);
+  // Generate structured summary (LLM or stub)
+  const { summary, usage } = await generateSummaryFromText(sourceArtifact.extracted_text, sourceArtifactId);
 
   // Create research_summary artifact
   const summaryArtifact = await prisma.artifact.create({
@@ -199,8 +290,9 @@ export async function executeResearchAgent(
   }
 
   const runtimeSeconds = (Date.now() - startTime) / 1000;
+  const costCents = usage ? estimateCostCents(usage.totalTokens) : 0;
 
-  await completeAgentRun(runId, summaryArtifact.id, runtimeSeconds);
+  await completeAgentRun(runId, summaryArtifact.id, runtimeSeconds, costCents);
 
   await logEvent({
     project_id: task.project_id,
@@ -213,13 +305,16 @@ export async function executeResearchAgent(
       output_artifact_id: summaryArtifact.id,
       runtime_seconds: runtimeSeconds,
       dataneeds_created: dataNeeds.length,
+      llm_used: !!usage,
+      llm_tokens: usage?.totalTokens ?? 0,
+      cost_cents: costCents,
     },
   });
 
-  return { artifactId: summaryArtifact.id, summary, dataNeeds };
+  return { artifactId: summaryArtifact.id, summary, dataNeeds, usage };
 }
 
-// ─── Regeneration Agent (deterministic, Slice 6) ───────────────────────
+// ─── Regeneration Agent ────────────────────────────────────────────────
 
 export interface RegenerationResult {
   artifactId: string;
@@ -229,6 +324,90 @@ export interface RegenerationResult {
     regenerated_sections: string[];
     parent_version_id: string;
   };
+}
+
+// ─── LLM-based regeneration ────────────────────────────────────────────
+
+async function regenerateSummaryFromLLM(
+  originalSummary: ResearchSummary,
+  reviewCommentText: string,
+  sectionNames: string[]
+): Promise<{ summary: ResearchSummary; usage: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+  const summaryJson = JSON.stringify(originalSummary, null, 2);
+
+  const messages: LLMMessage[] = [
+    {
+      role: 'system',
+      content:
+        'You are an expert investment analyst. You revise research summaries based on corrections or new evidence. You always return valid JSON.',
+    },
+    {
+      role: 'user',
+      content: `The following correction was received: "${reviewCommentText}"
+
+Original research summary:
+${summaryJson}
+
+Affected sections: ${sectionNames.join(', ')}
+
+Please regenerate the affected sections with the correction applied. Keep all other sections unchanged. Maintain the same JSON structure with all fields.
+
+Return ONLY valid JSON with all the same fields as the original summary. Do not include markdown formatting.`,
+    },
+  ];
+
+  const result = await completeLLM({ messages, jsonMode: true, temperature: 0.2, maxTokens: 4096 });
+  const parsed = parseLLMJson(result.content);
+
+  const summary: ResearchSummary = {
+    company_overview: parsed.company_overview ?? originalSummary.company_overview,
+    business_model: parsed.business_model ?? originalSummary.business_model,
+    revenue_model: parsed.revenue_model ?? originalSummary.revenue_model,
+    key_financial_figures: Array.isArray(parsed.key_financial_figures)
+      ? parsed.key_financial_figures
+      : originalSummary.key_financial_figures,
+    customers_and_concentration:
+      parsed.customers_and_concentration ?? originalSummary.customers_and_concentration,
+    market_and_competitors: parsed.market_and_competitors ?? originalSummary.market_and_competitors,
+    strengths: Array.isArray(parsed.strengths) ? parsed.strengths : originalSummary.strengths,
+    risks: Array.isArray(parsed.risks) ? parsed.risks : originalSummary.risks,
+    unanswered_questions: Array.isArray(parsed.unanswered_questions)
+      ? parsed.unanswered_questions
+      : originalSummary.unanswered_questions,
+    source_references: Array.isArray(parsed.source_references)
+      ? parsed.source_references.map((ref: any) => ({
+          section: ref.section || 'regenerated',
+          artifact_id: ref.artifact_id || '',
+          excerpt: ref.excerpt || '',
+        }))
+      : originalSummary.source_references,
+  };
+
+  return { summary, usage: result.usage };
+}
+
+// ─── Stub fallback for regeneration ────────────────────────────────────
+
+function regenerateSummaryFromStub(
+  originalSummary: ResearchSummary,
+  reviewCommentText: string,
+  sectionNames: string[]
+): ResearchSummary {
+  const regeneratedSummary: Record<string, unknown> = { ...originalSummary };
+
+  for (const section of sectionNames) {
+    const key = section as keyof ResearchSummary;
+    if (key in regeneratedSummary) {
+      const current = regeneratedSummary[key];
+      if (typeof current === 'string') {
+        regeneratedSummary[key] = `${current} [CORRECTED: ${reviewCommentText}]`;
+      } else if (Array.isArray(current)) {
+        regeneratedSummary[key] = [...current, `[CORRECTION APPLIED: ${reviewCommentText}]`];
+      }
+    }
+  }
+
+  return regeneratedSummary as unknown as ResearchSummary;
 }
 
 /**
@@ -315,33 +494,47 @@ export async function executeRegenerationAgent(
     }
   }
 
-  // Build regenerated summary: mark corrected sections
-  const regeneratedSummary: Record<string, unknown> = baseSummary
-    ? { ...baseSummary }
-    : {
-        company_overview: 'Regenerated content',
-        business_model: 'Regenerated content',
-        revenue_model: 'Regenerated content',
-        key_financial_figures: [],
-        customers_and_concentration: 'Regenerated content',
-        market_and_competitors: 'Regenerated content',
-        strengths: [],
-        risks: [],
-        unanswered_questions: [],
-        source_references: [],
-      };
+  // Generate regenerated summary (LLM or stub)
+  let regeneratedSummary: ResearchSummary;
+  let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
 
-  // Apply the correction to each selected section
-  for (const section of sectionNames) {
-    const key = section as keyof ResearchSummary;
-    if (key in regeneratedSummary) {
-      const current = regeneratedSummary[key];
-      if (typeof current === 'string') {
-        regeneratedSummary[key] = `${current} [CORRECTED: ${reviewCommentText}]`;
-      } else if (Array.isArray(current)) {
-        regeneratedSummary[key] = [...current, `[CORRECTION APPLIED: ${reviewCommentText}]`];
-      }
+  if (isLLMConfigured() && baseSummary) {
+    try {
+      const result = await regenerateSummaryFromLLM(baseSummary, reviewCommentText, sectionNames);
+      regeneratedSummary = result.summary;
+      usage = result.usage;
+    } catch (err) {
+      console.warn('LLM regeneration failed, falling back to stub:', err instanceof Error ? err.message : String(err));
+      regeneratedSummary = baseSummary
+        ? regenerateSummaryFromStub(baseSummary, reviewCommentText, sectionNames)
+        : ({
+            company_overview: 'Regenerated content',
+            business_model: 'Regenerated content',
+            revenue_model: 'Regenerated content',
+            key_financial_figures: [],
+            customers_and_concentration: 'Regenerated content',
+            market_and_competitors: 'Regenerated content',
+            strengths: [],
+            risks: [],
+            unanswered_questions: [],
+            source_references: [],
+          } as ResearchSummary);
     }
+  } else {
+    regeneratedSummary = baseSummary
+      ? regenerateSummaryFromStub(baseSummary, reviewCommentText, sectionNames)
+      : ({
+          company_overview: 'Regenerated content',
+          business_model: 'Regenerated content',
+          revenue_model: 'Regenerated content',
+          key_financial_figures: [],
+          customers_and_concentration: 'Regenerated content',
+          market_and_competitors: 'Regenerated content',
+          strengths: [],
+          risks: [],
+          unanswered_questions: [],
+          source_references: [],
+        } as ResearchSummary);
   }
 
   // Create regenerated research_summary artifact in target version
@@ -366,13 +559,15 @@ export async function executeRegenerationAgent(
         },
         correction_applied: reviewCommentText,
         regenerated_at: new Date().toISOString(),
+        llm_used: !!usage,
       } as Prisma.InputJsonValue,
     },
   });
 
   const runtimeSeconds = (Date.now() - startTime) / 1000;
+  const costCents = usage ? estimateCostCents(usage.totalTokens) : 0;
 
-  await completeAgentRun(runId, regeneratedArtifact.id, runtimeSeconds);
+  await completeAgentRun(runId, regeneratedArtifact.id, runtimeSeconds, costCents);
 
   await logEvent({
     project_id: task.project_id,
@@ -386,6 +581,9 @@ export async function executeRegenerationAgent(
       runtime_seconds: runtimeSeconds,
       regenerated_sections: sectionNames,
       review_comment_id: reviewCommentId,
+      llm_used: !!usage,
+      llm_tokens: usage?.totalTokens ?? 0,
+      cost_cents: costCents,
     },
   });
 

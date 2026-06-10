@@ -11,6 +11,9 @@ const envSchema = z.object({
   MINIO_SECRET_KEY: z.string().default('minioadmin'),
   MINIO_BUCKET: z.string().default('nbeamng-uploads'),
   API_KEY: z.string().default('dev-api-key'),
+  FIREWORKS_API_KEY: z.string().optional(),
+  FIREWORKS_BASE_URL: z.string().default('https://api.fireworks.ai/inference/v1'),
+  FIREWORKS_MODEL: z.string().default('accounts/fireworks/models/llama-v3p1-70b-instruct'),
 });
 
 const parsed = envSchema.safeParse(process.env);
