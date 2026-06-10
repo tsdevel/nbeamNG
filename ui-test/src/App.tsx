@@ -399,6 +399,7 @@ export default function App() {
   const [currentError, setCurrentError] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [backendStatus, setBackendStatus] = useState<'unknown' | 'online' | 'offline' | 'error'>('unknown');
   const [selectedFile, setSelectedFile] = useState<{ name: string; content: string } | null>(null);
   const [reviewText, setReviewText] = useState('Correction: Revenue is $50M, not $30M');
   const [regenSections, setRegenSections] = useState('executive_summary');
@@ -415,6 +416,33 @@ export default function App() {
   const addLog = useCallback((msg: string) => {
     setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
   }, []);
+
+  const checkHealth = async () => {
+    try {
+      const url = state.baseUrl ? `${state.baseUrl}/health` : '/health';
+      const res = await fetch(url, {
+        headers: { 'x-api-key': state.apiKey },
+      });
+      const text = await res.text();
+      if (res.ok) {
+        try {
+          const data = JSON.parse(text);
+          addLog(`🟢 Backend online: ${JSON.stringify(data)}`);
+          setBackendStatus('online');
+        } catch {
+          addLog(`🟢 Backend online (non-JSON): ${text.substring(0, 200)}`);
+          setBackendStatus('online');
+        }
+      } else {
+        addLog(`🔴 Backend error ${res.status}: ${text.substring(0, 500)}`);
+        setBackendStatus('error');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addLog(`🔴 Backend unreachable: ${msg}`);
+      setBackendStatus('offline');
+    }
+  };
 
   const arePrerequisitesMet = (step: Step) => {
     return step.requires.every((key) => {
@@ -473,16 +501,18 @@ export default function App() {
         body: body ? JSON.stringify(body) : undefined,
       });
 
+      const text = await res.text();
       let data: any;
-      const contentType = res.headers.get('content-type');
-      if (contentType?.includes('application/json')) {
-        data = await res.json();
-      } else {
-        data = { _binary: true, status: res.status, statusText: res.statusText };
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { _raw: text.substring(0, 1000) };
       }
 
       if (!res.ok) {
-        throw new Error(data.error?.message || data.message || `HTTP ${res.status}`);
+        throw new Error(
+          data.error?.message || data.message || data._raw || `HTTP ${res.status}`
+        );
       }
 
       const updates: Record<string, any> = {};
@@ -697,6 +727,23 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-3">
           <h1 className="text-xl font-bold text-white">NbeamNG Test UI</h1>
           <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-xs px-2 py-1 rounded font-medium ${
+              backendStatus === 'online' ? 'bg-green-900 text-green-300' :
+              backendStatus === 'offline' ? 'bg-red-900 text-red-300' :
+              backendStatus === 'error' ? 'bg-yellow-900 text-yellow-300' :
+              'bg-gray-700 text-gray-400'
+            }`}>
+              {backendStatus === 'online' ? '● Backend Online' :
+               backendStatus === 'offline' ? '● Backend Offline' :
+               backendStatus === 'error' ? '● Backend Error' :
+               '● Backend Unknown'}
+            </span>
+            <button
+              onClick={checkHealth}
+              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm text-white"
+            >
+              Check Health
+            </button>
             <button
               onClick={() => {
                 navigator.clipboard.writeText(JSON.stringify(state, null, 2));
